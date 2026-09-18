@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/badis-yt/mdga/resources/settings.schema.json",
+  "title": "mdga settings",
+  "type": "object",
+  "required": ["version", "modules"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "modules": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["enabled"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "subtoggles": {
+            "type": "object",
+            "additionalProperties": { "type": "boolean" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "name": "mdga",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Make Discord Great Again",
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*",
+    "packages/modules/*"
+  ],
+  "engines": {
+    "node": ">=20.10.0",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "mdga": "tsx packages/installer/src/cli.ts",
+    "dev": "tsx scripts/watch.ts",
+    "inject:dev": "tsx scripts/dev-inject.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.20.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "folders": [
+    { "name": "root", "path": "." },
+    { "name": "core", "path": "packages/core" },
+    { "name": "installer", "path": "packages/installer" },
+    { "name": "plugin-api", "path": "packages/plugin-api" },
+    { "name": "module: classic-profile", "path": "packages/modules/classic-profile" },
+    { "name": "module: no-shop", "path": "packages/modules/no-shop" },
+    { "name": "module: no-nitro-spam", "path": "packages/modules/no-nitro-spam" },
+    { "name": "module: no-super-reactions", "path": "packages/modules/no-super-reactions" },
+    { "name": "module: no-clips", "path": "packages/modules/no-clips" },
+    { "name": "example-plugin", "path": "packages/example-plugin" },
+    { "name": "docs", "path": "docs" }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "files.eol": "\n"
+  }
+}

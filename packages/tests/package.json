@@ -1,0 +1,16 @@
+{
+  "name": "@mdga/tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Make Discord Great Again",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@mdga/core": "*",
+    "@mdga/plugin-api": "*"
+  }
+}

@@ -1,0 +1,24 @@
+# Dependencies and build output
+node_modules/
+dist/
+out/
+build/tmp/
+.cache/
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+
+# Env
+.env
+.env.local
+
+# Planning docs — kept locally, never committed
+docs/PLAN.md
+docs/KNOWN.md
+docs/ARCHITECTURE.md
