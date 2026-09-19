@@ -531,7 +531,13 @@ const MAIN_WORLD_BOOTSTRAP = `
     const current = target[method];
     if (typeof current !== "function") throw new Error("mdga patcher: " + method + " is not a function");
     if (current[STATE]) return current[STATE];
-    const state = { original: current.bind(target), before: [], instead: [], after: [], disposed: false };
+    // NB: DO NOT .bind(target). For prototype methods
+    // (XMLHttpRequest.prototype.open etc.) the native impl requires the
+    // instance as receiver, not the prototype -- a bound copy throws
+    // "Illegal invocation" for every non-target call and takes out
+    // unrelated features (chats, servers, friends). Leaving the receiver
+    // unbound lets the wrapper forward whatever the caller passed in.
+    const state = { original: current, before: [], instead: [], after: [], disposed: false };
     const wrapper = function (...args) {
       if (state.disposed) return state.original.apply(this, args);
       let currentArgs = args;
