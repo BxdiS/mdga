@@ -178,6 +178,7 @@ function runtime() {
     );
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
+      if (!entry) continue;
       const desc = entry.querySelector<HTMLElement>("div[class*=\"description_\"]");
       if (!desc) continue;
       const text = desc.textContent || "";
@@ -198,6 +199,7 @@ function runtime() {
     );
     for (let i = 0; i < options.length; i++) {
       const opt = options[i];
+      if (!opt) continue;
       const text = opt.textContent || "";
       if (CLIP_DESC_RE.test(text)) {
         opt.style.display = "none";
