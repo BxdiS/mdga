@@ -4,9 +4,13 @@ import { defineModule } from "@mdga/plugin-api";
 // across Discord builds and locales even when the uid prefix (e.g.
 // "private-channels-uid_11___") changes. Hiding the whole <li> via :has()
 // keeps hover targets, focus rings and keyboard navigation gone too.
+//
+// Scope: this module only kills Quests end-to-end (UI + store + XHR).
+// Shop and Nitro rows also live under similar data-list-item-id suffixes
+// but their features are not yet neutralised at the store or network
+// layers, so a CSS-only hide would be a half-measure. They will get
+// their own modules (no-shop-tab, no-nitro-store) and be removed there.
 const CSS = `
-li[role="listitem"]:has(a[data-list-item-id$="___shop"]) { display: none !important; }
-li[role="listitem"]:has(a[data-list-item-id$="___nitro"]) { display: none !important; }
 li[role="listitem"]:has(a[data-list-item-id$="___quests"]) { display: none !important; }
 /* The Quests item is wrapped in a shine-animation container; collapse it too
    so its padding does not leave a gap. */
@@ -189,14 +193,11 @@ function runtime() {
 
 export default defineModule({
   id: "no-shop",
-  label: "No Shop",
-  description: "Hides Shop / Nitro / Quests from the DM sidebar and neutralises the Quest stores.",
+  label: "No Quests",
+  description: "Hides the Quests row from the DM sidebar, neutralises the Quest stores, and drops /quests/* traffic.",
   defaultEnabled: true,
   subtoggles: {
-    shopTab: { label: "Shop tab", default: true },
-    nitroStore: { label: "Nitro store link", default: true },
     quests: { label: "Quests", default: true },
-    collectibles: { label: "Collectibles", default: true },
   },
   css: CSS,
   runtime,
