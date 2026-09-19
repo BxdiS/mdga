@@ -41,6 +41,9 @@ export interface ModuleManifest {
 export interface Module extends ModuleManifest {
   find?: WebpackFinder;
   patches?: Patch[];
+  // CSS injected while the module is enabled. Removed on disable. The loader
+  // keys it by module id so re-enabling replaces the sheet cleanly.
+  css?: string;
   onStart?(ctx: ModuleContext): void | Promise<void>;
   onStop?(ctx: ModuleContext): void | Promise<void>;
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { extract, pack } from "./asar.js";
 import type { DiscordInstall } from "./locate.js";
 import { logger } from "./logger.js";
+import { collectModules } from "./modules.js";
 
 /**
  * Injection layout inside a repacked app.asar:
@@ -70,6 +71,10 @@ export async function inject(install: DiscordInstall): Promise<void> {
   fs.copyFileSync(path.join(TEMPLATE_DIR, "mdga_main.js"), path.join(mdgaDir, "main.js"));
   fs.copyFileSync(path.join(TEMPLATE_DIR, "mdga_preload.js"), path.join(mdgaDir, "preload.js"));
   fs.writeFileSync(path.join(tempDir, "mdga_entry.js"), makeEntryStub(originalMain));
+
+  const modules = await collectModules();
+  fs.writeFileSync(path.join(mdgaDir, "modules.json"), JSON.stringify(modules, null, 2));
+  logger.info(`bundled ${modules.length} modules: ${modules.map((m) => m.id).join(", ")}`);
 
   pkg.main = "mdga_entry.js";
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
