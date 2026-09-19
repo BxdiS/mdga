@@ -433,6 +433,78 @@ const MAIN_WORLD_BOOTSTRAP = `
     return Array.from(cssNodes.keys());
   }
 
+  // mdga.diag(query) — universal probe: given a keyword/URL fragment,
+  // dumps factory matches, REST reachability, Flux action names and stores
+  // with matching displayName. First step for finding a new module's hooks.
+  function diag(query) {
+    if (typeof query !== "string" || query.length === 0) {
+      console.log("[mdga] diag: pass a keyword, e.g. mdga.diag('quests')");
+      return;
+    }
+    var q = query;
+    var qLower = q.toLowerCase();
+    try {
+      var hits = findAllFactoriesByCode(q) || [];
+      console.log("[mdga] diag: factories mentioning " + q + ":", hits.length);
+      var i, entry, id, factory, src, idx, snippet, showed;
+      showed = 0;
+      for (i = 0; i < hits.length; i++) {
+        if (showed >= 5) break;
+        entry = hits[i];
+        if (!entry) continue;
+        id = entry.id;
+        factory = entry.factory;
+        src = "";
+        try { src = String(factory); } catch (e1) { src = ""; }
+        idx = src.indexOf(q);
+        if (idx >= 0) {
+          snippet = src.slice(Math.max(0, idx - 160), idx + 160);
+        } else {
+          snippet = src.slice(0, 320);
+        }
+        console.log("[mdga] diag:   factory " + id + " snippet:", snippet);
+        showed = showed + 1;
+      }
+      var rest = findByProps("get", "post", "put", "delete", "patch");
+      if (rest) {
+        console.log("[mdga] diag: REST client reachable, keys:", Object.keys(rest));
+      } else {
+        console.log("[mdga] diag: REST client not reachable");
+      }
+      var disp = findByProps("dispatch", "register");
+      if (disp && disp._actionHandlers && disp._actionHandlers._orderedActionHandlers) {
+        var actionKeys = Object.keys(disp._actionHandlers._orderedActionHandlers);
+        var matches = [];
+        var k;
+        for (k = 0; k < actionKeys.length; k++) {
+          if (actionKeys[k].toLowerCase().indexOf(qLower) !== -1) {
+            matches.push(actionKeys[k]);
+          }
+        }
+        console.log("[mdga] diag: dispatcher actions matching " + q + ":", matches);
+      }
+      var stores = [];
+      var mid, v, storeName;
+      for (mid in observedExports) {
+        v = observedExports[mid];
+        if (!v) continue;
+        if (typeof v !== "object") continue;
+        storeName = "";
+        try {
+          if (v.constructor && typeof v.constructor.displayName === "string") {
+            storeName = v.constructor.displayName;
+          }
+        } catch (e2) { storeName = ""; }
+        if (storeName && storeName.toLowerCase().indexOf(qLower) !== -1) {
+          stores.push([mid, storeName]);
+        }
+      }
+      console.log("[mdga] diag: stores with displayName matching " + q + ":", stores);
+    } catch (err) {
+      console.error("[mdga] diag failed:", err && (err.stack || err.message || err));
+    }
+  }
+
   function waitFor(produce, opts) {
     const timeoutMs = (opts && opts.timeoutMs) || 10000;
     const intervalMs = (opts && opts.intervalMs) || 100;
@@ -459,7 +531,13 @@ const MAIN_WORLD_BOOTSTRAP = `
     const current = target[method];
     if (typeof current !== "function") throw new Error("mdga patcher: " + method + " is not a function");
     if (current[STATE]) return current[STATE];
-    const state = { original: current.bind(target), before: [], instead: [], after: [], disposed: false };
+    // NB: DO NOT .bind(target). For prototype methods
+    // (XMLHttpRequest.prototype.open etc.) the native impl requires the
+    // instance as receiver, not the prototype -- a bound copy throws
+    // "Illegal invocation" for every non-target call and takes out
+    // unrelated features (chats, servers, friends). Leaving the receiver
+    // unbound lets the wrapper forward whatever the caller passed in.
+    const state = { original: current, before: [], instead: [], after: [], disposed: false };
     const wrapper = function (...args) {
       if (state.disposed) return state.original.apply(this, args);
       let currentArgs = args;
@@ -540,6 +618,7 @@ const MAIN_WORLD_BOOTSTRAP = `
     injectCSS,
     removeCSS,
     listCSS,
+    diag,
     patch,
     unpatchAll,
   };
@@ -551,31 +630,58 @@ const MAIN_WORLD_BOOTSTRAP = `
     enumerable: true,
   });
 
-  // Apply CSS from every bundled + enabled module. Uses injectCSS keyed by
-  // module id so a future settings toggle can removeCSS(id) cleanly.
+  // Apply CSS + runtime from every bundled + enabled module.
   try {
     const bundled = window.__mdga_modules__ || [];
-    let applied = 0;
+    let cssApplied = 0;
+    let runtimeRan = 0;
     for (const m of bundled) {
-      if (m && typeof m.css === "string" && m.css.length > 0) {
+      if (!m) continue;
+      if (typeof m.css === "string" && m.css.length > 0) {
         injectCSS(m.id, m.css);
-        applied++;
+        cssApplied++;
+      }
+      if (typeof m.runtime === "string" && m.runtime.length > 0) {
+        try {
+          // Convert the stringified arrow/function back into a callable and
+          // invoke it. Runtime hooks depend on window.mdga being present;
+          // most also need webpack modules loaded, so hand them onWebpackReady
+          // and let each hook decide when it's safe to run.
+          // esbuild (via tsx) wraps named functions in __name(fn, "…") to
+          // preserve Function.prototype.name. That helper doesn't exist in
+          // the main world, so we shim it before evaluating the body.
+          const src =
+            "(function(){var __name=function(f){return f;};return " + m.runtime + ";})()";
+          const fn = (0, eval)(src);
+          if (typeof fn === "function") {
+            fn();
+            runtimeRan++;
+          }
+        } catch (err) {
+          console.error("[mdga] runtime failed for module " + m.id + ":", err);
+        }
       }
     }
-    if (applied > 0) console.log("[mdga] applied CSS from " + applied + " modules");
+    if (cssApplied > 0) console.log("[mdga] applied CSS from " + cssApplied + " modules");
+    if (runtimeRan > 0) console.log("[mdga] ran runtime for " + runtimeRan + " modules");
     try { delete window.__mdga_modules__; } catch {}
-  } catch (err) { console.error("[mdga] failed to apply module CSS:", err); }
+  } catch (err) { console.error("[mdga] failed to apply modules:", err); }
 
   console.log("[mdga] window.mdga installed at " + location.href);
 })();
 `;
 
-// Serialize the modules manifest for the main-world bootstrap. Only id + css
-// crosses; runtime enable-state will live in settings later and gate this.
+// Serialize the modules manifest for the main-world bootstrap. Runtime
+// enable-state will live in settings later and gate this. `runtime` is a
+// stringified function; the bootstrap will wrap it in a Function() call.
 const BUNDLED_MODULES_JSON = JSON.stringify(
   bundledModules
-    .filter((m) => m && typeof m.css === "string" && m.defaultEnabled)
-    .map((m) => ({ id: m.id, css: m.css })),
+    .filter((m) => m && m.defaultEnabled && (typeof m.css === "string" || typeof m.runtime === "string"))
+    .map((m) => ({
+      id: m.id,
+      css: typeof m.css === "string" ? m.css : "",
+      runtime: typeof m.runtime === "string" ? m.runtime : "",
+    })),
 );
 
 // Prepend a small stub that hands the manifest to the bootstrap via a
@@ -584,8 +690,13 @@ const BUNDLED_MODULES_JSON = JSON.stringify(
 const MODULES_STUB = "window.__mdga_modules__ = " + BUNDLED_MODULES_JSON + ";";
 
 try {
-  electron.webFrame.executeJavaScript(MODULES_STUB + "\n" + MAIN_WORLD_BOOTSTRAP);
+  const p = electron.webFrame.executeJavaScript(MODULES_STUB + "\n" + MAIN_WORLD_BOOTSTRAP);
   console.log("[mdga] preload: main-world bootstrap injected via webFrame");
+  if (p && typeof p.catch === "function") {
+    p.catch((err) => {
+      console.error("[mdga] preload: main-world script rejected:", err && (err.message || err));
+    });
+  }
 } catch (err) {
   console.error("[mdga] preload: webFrame.executeJavaScript failed:", err);
 }

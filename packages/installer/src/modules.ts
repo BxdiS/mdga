@@ -16,6 +16,9 @@ export interface ModuleRecord {
   description: string;
   defaultEnabled: boolean;
   css?: string;
+  // Serialized runtime function body — evaluated in the main world after
+  // window.mdga is installed. Empty if the module has no runtime hook.
+  runtime?: string;
 }
 
 function findModulesDir(): string {
@@ -50,6 +53,9 @@ export async function collectModules(): Promise<ModuleRecord[]> {
         description: mod.description,
         defaultEnabled: mod.defaultEnabled,
         ...(typeof mod.css === "string" ? { css: mod.css } : {}),
+        ...(typeof mod.runtime === "function"
+          ? { runtime: Function.prototype.toString.call(mod.runtime) }
+          : {}),
       });
     } catch (err) {
       console.warn(`[mdga] failed to load module ${entry}:`, (err as Error).message);
