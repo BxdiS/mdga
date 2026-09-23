@@ -34,6 +34,11 @@ li[class^="menuItem_"]:has(svg path[d^="${CLIP_ICON_PATH_PREFIX}"]) + [class*="s
 [data-mdga-no-clips-hidden] + [class*="divider_"],
 [data-mdga-no-clips-hidden] + [role="separator"],
 [data-mdga-no-clips-hidden] + [class*="separator_" i] { display: none !important; }
+/* "ALT C to clip" under the game name in the activity panel (bottom left,
+   while a game is running). The hint is its own element,
+   div.clipKeybindHint_<hash>, holding the key combo and the text; hiding it
+   leaves the game name and the Stream button as they are. */
+[class*="clipKeybindHint_"] { display: none !important; }
 /* The Keybind Action dropdown sizes its content_<hash> list with an inline
    height (840px on Stable 1.0.9259) computed for every option, so hiding
    "Save Clip" left an empty row. Let the list size to what is visible. */
@@ -134,14 +139,48 @@ function runtime() {
   const storeNames = ["ClipsStore", "ClipsRecordingStore", "ClipsSettingsStore"];
   // Broad neutralisation table — each entry is patched only if the method
   // exists, so an unknown build won't blow up.
-  const boolFalse = ["isRecording", "isEnabled", "isClipping", "isSaving", "isUploading"];
+  // The first five are older guesses; on Stable 1.0.9259 the store answers
+  // isClipsEnabledForUser / getEnableAutoclipping / canShowReminders, and
+  // only those gate the Clips UI and autoclipping there.
+  const boolFalse = [
+    "isRecording", "isEnabled", "isClipping", "isSaving", "isUploading",
+    "isClipsEnabledForUser", "getEnableAutoclipping", "canShowReminders",
+  ];
   const nullish = [
     "getCurrentClip", "getClip", "getClipById", "getActiveClip",
     "getRecordingState", "getUploadState", "getLastClip",
   ];
   const emptyArray = ["getClips", "getRecentClips", "getPendingUploads"];
 
+  // The store patches alone did not stop the hotkey: Alt+C dispatches a
+  // local Flux action CLIPS_SIGNAL_CREATED {signal:{type:"manual"}}, Discord's
+  // clip "decider" schedules it, and ~30 s later the native media engine
+  // saves the clip (CLIPS_SAVE_CLIP_START -> CLIPS_SAVE_CLIP), never asking
+  // the store. Every clip, manual or automatic, starts with that signal, so
+  // drop it at the dispatcher. It is a client-side action, not a gateway
+  // event: nothing reaches the server either way.
+  const DISPATCH_STAMP = Symbol.for("mdga.no-clips.dispatch-patched");
+  const guardDispatcher = (store: object): void => {
+    const dispatcher = (store as { _dispatcher?: Record<PropertyKey, unknown> })._dispatcher;
+    if (!dispatcher || typeof dispatcher["dispatch"] !== "function" || dispatcher[DISPATCH_STAMP]) return;
+    patches.push(
+      patch(dispatcher, "dispatch", "instead", (args, original, self) => {
+        const action = args[0] as { type?: unknown } | undefined;
+        if (action && action.type === "CLIPS_SIGNAL_CREATED") {
+          console.log("[mdga] no-clips: dropped CLIPS_SIGNAL_CREATED");
+          return undefined;
+        }
+        return (original as (...a: unknown[]) => unknown).apply(self, args);
+      }),
+    );
+    try {
+      Object.defineProperty(dispatcher, DISPATCH_STAMP, { value: true, enumerable: false });
+    } catch { dispatcher[DISPATCH_STAMP] = true; }
+    console.log("[mdga] no-clips: guarded dispatcher against CLIPS_SIGNAL_CREATED");
+  };
+
   const patchStore = (name: string, store: object): void => {
+    if (name === "ClipsStore") guardDispatcher(store);
     if ((store as unknown as Record<symbol, unknown>)[STORE_STAMP]) return;
     const proto = Object.getPrototypeOf(store) as Record<string, unknown>;
     for (const m of boolFalse) {
