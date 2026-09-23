@@ -179,6 +179,37 @@ function runtime() {
     console.log("[mdga] no-clips: guarded dispatcher against CLIPS_SIGNAL_CREATED");
   };
 
+  // With Clips enabled in Discord's settings the native media engine keeps a
+  // rolling recording buffer of the running game (Stable 1.0.9259:
+  // ClipsStore.getSettings().clipsEnabled, an "active" clips session) even
+  // when nothing is ever saved. That costs GPU/encoder time for nothing. Turn
+  // it off on the engine and pin it off: whatever Discord later passes to
+  // setClipsRecordingEnabled, the engine gets false. Local native call only.
+  const ENGINE_STAMP = Symbol.for("mdga.no-clips.engine-patched");
+  const stopRecordingBuffer = (mediaEngineStore: object): void => {
+    const getEngine = (mediaEngineStore as { getMediaEngine?: () => unknown }).getMediaEngine;
+    const engine = typeof getEngine === "function" ? getEngine.call(mediaEngineStore) : null;
+    if (!engine || typeof engine !== "object") return;
+    const proto = Object.getPrototypeOf(engine) as Record<PropertyKey, unknown>;
+    if (typeof proto["setClipsRecordingEnabled"] !== "function" || proto[ENGINE_STAMP]) return;
+    patches.push(
+      patch(proto, "setClipsRecordingEnabled", "before", (args) => {
+        const forced = args.slice();
+        forced[0] = false;
+        return forced;
+      }),
+    );
+    try {
+      Object.defineProperty(proto, ENGINE_STAMP, { value: true, enumerable: false });
+    } catch { proto[ENGINE_STAMP] = true; }
+    try {
+      (engine as { setClipsRecordingEnabled(on: boolean): void }).setClipsRecordingEnabled(false);
+    } catch (err) {
+      console.error("[mdga] no-clips: setClipsRecordingEnabled(false) failed:", err);
+    }
+    console.log("[mdga] no-clips: clips recording buffer off");
+  };
+
   const patchStore = (name: string, store: object): void => {
     if (name === "ClipsStore") guardDispatcher(store);
     if ((store as unknown as Record<symbol, unknown>)[STORE_STAMP]) return;
@@ -283,6 +314,7 @@ function runtime() {
     installRest();
     // Patch each store the moment its module loads instead of polling.
     onStores(storeNames, patchStore);
+    onStores(["MediaEngineStore"], (_name, store) => stopRecordingBuffer(store));
   });
 }
 
