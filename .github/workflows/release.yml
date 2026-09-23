@@ -1,15 +1,17 @@
 name: release
 
-# Every push to main publishes a release named after its commit, "build
-# <sha7>", tagged build-<sha7>. Older builds stay in the release history; the
-# newest build on main is marked latest, so the install command fetches it:
+# Publishes a release named after the commit, "build <sha7>", tagged
+# build-<sha7>. Older builds stay in the release history; the newest build of
+# main is marked latest, so the install command fetches it:
 #   irm https://github.com/BxdiS/mdga/releases/latest/download/install.ps1 | iex
 #
-# Run it by hand with a `ref` to (re)build an older commit; that release is
-# not marked latest unless the ref is main's head.
+# When: every 3 days on a schedule, only if main moved since the last build;
+# or by hand (Actions > release > Run workflow, or `gh workflow run
+# release.yml`), which always builds. A `ref` input builds another commit;
+# that release is not marked latest unless the ref is main's head.
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "0 12 */3 * *" # 12:00 UTC on days 1, 4, 7, ... of each month
   workflow_dispatch:
     inputs:
       ref:
@@ -33,9 +35,29 @@ env:
   REF: ${{ inputs.ref || github.sha }}
 
 jobs:
+  # Scheduled runs skip when nothing landed on main since the last build.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        run: |
+          last=$(git describe --tags --abbrev=0 --match 'build-*' HEAD 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ] || [ -z "$last" ]; then build=true
+          elif [ "$(git rev-parse "$last^{commit}")" = "$(git rev-parse HEAD)" ]; then build=false
+          else build=true; fi
+          echo "last build: ${last:-none}, build: $build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   # mdga-installer.exe needs the C# compiler that ships with Windows. Commits
   # from before the exe existed build without it.
   exe:
+    needs: check
+    if: needs.check.outputs.build == 'true'
     runs-on: windows-latest
     steps:
       # actions/checkout only fetches full SHAs or branch/tag names, so a
@@ -56,7 +78,8 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: exe
+    needs: [check, exe]
+    if: needs.check.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
