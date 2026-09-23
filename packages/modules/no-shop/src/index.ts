@@ -15,7 +15,16 @@ li[role="listitem"]:has(a[data-list-item-id$="___quests"]) { display: none !impo
 /* The Quests item is wrapped in a shine-animation container; collapse it too
    so its padding does not leave a gap. */
 div[class^="wrapper__"]:has(> li[role="listitem"] a[data-list-item-id$="___quests"]) { display: none !important; }
+/* "Completed a Quest" profile badge; fallback for the data filter below. */
+[aria-label="User Badges"] a[href*="/discovery/quests"] { display: none !important; }
 `;
+
+// Profile badges tied to Quests: "Completed a Quest" and the Last Meadow
+// Online event levels ("Level N Reached"), and the Orbs badge (Orbs are the
+// Quest reward currency; the badge links to Shop > Orbs Exclusives). Matched
+// by badge id, seen on Stable: quest_completed, april_fools_2026 (the Meadow
+// level badge), orb_profile_badge.
+const QUEST_BADGE = /^(quest_|april_fools_|orb_profile_badge$)/;
 
 // Runtime hook — executed in the main world after `window.mdga` is set up.
 // Trust & Safety fence: we only patch read-side store methods so the client
@@ -169,6 +178,34 @@ function runtime() {
     console.log("[mdga] no-shop: neutralised UnenrolledActivityQuestStore");
   };
 
+  // Read-side filter on profile badges. One cached copy per profile object,
+  // otherwise every store read returns a new identity and React re-renders.
+  const filtered = new WeakMap<object, object>();
+  const stripBadges = (profile: unknown): unknown => {
+    if (!profile || typeof profile !== "object") return profile;
+    const p = profile as Record<string, unknown>;
+    const badges = p.badges;
+    if (!Array.isArray(badges)) return profile;
+    const keep = badges.filter((b) => !QUEST_BADGE.test(String((b as { id?: unknown })?.id ?? "")));
+    if (keep.length === badges.length) return profile;
+    let copy = filtered.get(p);
+    if (!copy) {
+      copy = Object.assign(Object.create(Object.getPrototypeOf(p)), p, { badges: keep }) as object;
+      filtered.set(p, copy);
+    }
+    return copy;
+  };
+  const patchProfileStore = (store: object): void => {
+    if (!stamp(store)) return;
+    const proto = Object.getPrototypeOf(store) as Record<string, unknown>;
+    for (const name of ["getUserProfile", "getGuildMemberProfile"]) {
+      if (typeof proto[name] !== "function") continue;
+      // after-handlers get [result, ...args]; returning a value replaces it.
+      patches.push(patch(proto, name, "after", (args) => stripBadges(args[0])));
+    }
+    console.log("[mdga] no-shop: filtering Quest badges from UserProfileStore");
+  };
+
   const onWebpackReady = mdga["onWebpackReady"] as (cb: () => void) => void;
   onWebpackReady(() => {
     // XMLHttpRequest exists from the start, so this lands on the first call.
@@ -176,8 +213,9 @@ function runtime() {
     // Patch each store the moment its module loads. This used to be a 25 ms
     // poll with a full module-graph scan per tick, which also gave up after
     // 5 s and missed UnenrolledActivityQuestStore when it loaded late.
-    onStores(["QuestStore", "UnenrolledActivityQuestStore"], (name, store) => {
+    onStores(["QuestStore", "UnenrolledActivityQuestStore", "UserProfileStore"], (name, store) => {
       if (name === "QuestStore") patchQuestStore(store);
+      else if (name === "UserProfileStore") patchProfileStore(store);
       else patchUnenrolledStore(store);
     });
   });
