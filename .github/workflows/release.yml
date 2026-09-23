@@ -1,0 +1,32 @@
+name: release
+
+# Push a tag like v0.1.0 to publish a release with the one-line installer:
+#   irm https://github.com/BxdiS/mdga/releases/latest/download/install.ps1 | iex
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx tsx scripts/check-bundles.mts
+      - run: npx tsx scripts/build-release.mts
+        env:
+          MDGA_VERSION: ${{ github.ref_name }}
+      - run: >
+          gh release create "$GITHUB_REF_NAME"
+          dist/release/install.ps1 dist/release/mdga-payload.json
+          --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

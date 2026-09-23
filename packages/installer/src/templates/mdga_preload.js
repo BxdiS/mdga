@@ -49,7 +49,10 @@ try {
 const MODULES_STUB =
   "window.__mdga_modules__ = [" +
   bundledModules
-    .filter((m) => m && m.defaultEnabled && typeof m.code === "string" && m.code.length > 0)
+    // `enabled` is what the user picked in install.ps1; the dev CLI leaves it
+    // unset, so the module's own default applies.
+    .filter((m) => m && (typeof m.enabled === "boolean" ? m.enabled : m.defaultEnabled))
+    .filter((m) => typeof m.code === "string" && m.code.length > 0)
     .map(
       (m) =>
         "(function(){try{" +
