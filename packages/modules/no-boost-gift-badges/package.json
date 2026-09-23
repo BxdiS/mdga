@@ -1,0 +1,15 @@
+{
+  "name": "@mdga/module-no-boost-gift-badges",
+  "version": "0.0.0",
+  "description": "Make Discord Great Again",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": ["src"],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mdga/plugin-api": "*"
+  }
+}
