@@ -23,7 +23,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # mdga-installer.exe needs the C# compiler that ships with Windows.
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/exe/build.ps1 -Out dist/mdga-installer.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe
+          path: dist/mdga-installer.exe
+
   release:
+    needs: exe
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,12 +54,17 @@ jobs:
       - run: npx tsx scripts/build-release.mts
         env:
           MDGA_VERSION: ${{ steps.build.outputs.short }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: exe
+          path: dist/release
 
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/release/install.ps1
             dist/release/mdga-payload.json
+            dist/release/mdga-installer.exe
 
       - name: Release notes
         env:
@@ -64,7 +81,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           title="DevBuild ${{ steps.build.outputs.short }}"
-          assets=(dist/release/install.ps1 dist/release/mdga-payload.json)
+          assets=(dist/release/install.ps1 dist/release/mdga-payload.json dist/release/mdga-installer.exe)
           git tag -f devbuild
           git push -f origin refs/tags/devbuild
           if gh release view devbuild > /dev/null 2>&1; then
