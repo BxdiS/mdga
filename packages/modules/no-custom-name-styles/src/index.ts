@@ -101,13 +101,6 @@ const CSS = `
   text-shadow: none !important;
   filter: none !important;
 }
-
-/* ─── Desaturation filter (exclude role circle dots) ─── */
-/* desaturateUserColors_<hash> is shared between name text and role circle
-   dots. Only strip it from name text so the dot keeps its colour. */
-[class*="desaturateUserColors_"]:not([class*="roleCircle_"]) {
-  filter: none !important;
-}
 `;
 
 export default defineModule({

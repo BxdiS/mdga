@@ -17,17 +17,13 @@ const CSS = `
    The animated background collectible behind a member's name in the
    member list. Wrapper class is container_<hash>, holding a video with
    class img_<hash>. Discord tags the parent childContainer with the
-   modifier nameplated_<hash>. Hide the whole wrapper (and stop the video
-   so the tab doesn't keep decoding it) and clear the modifier's spacing
-   in case Discord ever adds padding to it. */
+   modifier nameplated_<hash>; its padding is the row's normal spacing, so
+   it stays. Hide the whole wrapper and the video itself. */
 [class*="container_"][aria-hidden="true"]:has(> [class*="videoContainer_"] > video[src*="collectibles-shop"]) {
   display: none !important;
 }
 [class*="videoContainer_"] > video[src*="collectibles-shop"] {
   display: none !important;
-}
-[class*="nameplated_"] {
-  padding: unset !important;
 }
 
 /* ─── Profile effects ───

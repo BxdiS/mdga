@@ -45,6 +45,26 @@ const MAIN_WORLD_BOOTSTRAP = `
   let wpRequire = null;                    // main webpack require
   const observedExports = Object.create(null); // { [id]: exports } populated by factory apply-trap
   const readyCbs = [];
+  // Pending onStores() requests: { names: Set, cb }. Checked against each
+  // module's exports right after its factory runs, so a store is patched the
+  // moment it exists instead of on the next poll tick.
+  const storeWatchers = [];
+
+  function checkStoreWatchers(exports) {
+    for (const cand of candidatesOf(exports)) {
+      if (cand == null || typeof cand !== "object") continue;
+      const ctor = safeGet(cand, "constructor");
+      const name = ctor && safeGet(ctor, "displayName");
+      if (typeof name !== "string") continue;
+      for (let i = storeWatchers.length - 1; i >= 0; i--) {
+        const w = storeWatchers[i];
+        if (!w.names.has(name)) continue;
+        w.names.delete(name);
+        if (w.names.size === 0) storeWatchers.splice(i, 1);
+        try { w.cb(name, cand); } catch (err) { console.error("[mdga] onStores cb failed:", err); }
+      }
+    }
+  }
 
   function fireReady(require) {
     wpRequire = require;
@@ -75,11 +95,13 @@ const MAIN_WORLD_BOOTSTRAP = `
         result = Reflect.apply(originalFactory, thisArg, args);
       } finally {
         try {
+          let fresh;
           if (module && "exports" in module) {
-            observedExports[String(module.id)] = module.exports;
+            fresh = observedExports[String(module.id)] = module.exports;
           } else if (moduleExports != null) {
-            observedExports[String(originalFactory.name)] = moduleExports;
+            fresh = observedExports[String(originalFactory.name)] = moduleExports;
           }
+          if (storeWatchers.length > 0 && fresh != null) checkStoreWatchers(fresh);
           if (wpRequire == null && typeof requireFn === "function" && requireFn.m != null && requireFn.c != null) {
             fireReady(requireFn);
           }
@@ -114,21 +136,12 @@ const MAIN_WORLD_BOOTSTRAP = `
         // Deliver value into 'this' as a normal own property from now on.
         define(this, "m", { value: originalModules });
 
-        // Overwrite webpack's defineExports so properties stay configurable —
-        // lets us later mark bad exports non-enumerable if we want to.
-        try {
-          this.d = function (exports, definition) {
-            for (const key in definition) {
-              if (Object.hasOwn(definition, key) && !Object.hasOwn(exports, key)) {
-                Object.defineProperty(exports, key, {
-                  configurable: true,
-                  enumerable: true,
-                  get: definition[key],
-                });
-              }
-            }
-          };
-        } catch { /* wreq is frozen — ignore */ }
+        // Only a webpack require gets a factory table: a function whose .m
+        // is a plain object of functions. Anything else that happens to set
+        // .m on a function keeps the plain value.
+        if (typeof this !== "function" || originalModules == null || typeof originalModules !== "object") {
+          return;
+        }
 
         // Wrap pre-populated factories (Discord ships some inline)
         try {
@@ -145,13 +158,9 @@ const MAIN_WORLD_BOOTSTRAP = `
           const proxied = new Proxy(originalModules, factoryRegistryHandler);
           define(this, "m", { value: proxied });
         } catch (err) { console.error("[mdga] failed to proxy factory registry:", err); }
-
-        // If this looks like the main webpack instance (has .c and .p),
-        // capture it. Otherwise wait — sentry/libdiscore instances also fire
-        // this setter but aren't what we want.
-        if (wpRequire == null && this.c != null) {
-          fireReady(this);
-        }
+        // The require is captured from the first factory call (see
+        // factoryProxyHandler): webpack assigns .m before .c, so .c is never
+        // set yet at this point.
       },
     });
     console.log("[mdga] installed Function.prototype.m setter hook");
@@ -340,6 +349,24 @@ const MAIN_WORLD_BOOTSTRAP = `
       } catch {}
     }
     return out;
+  }
+
+  // Calls cb(name, store) once per name: right away for stores that already
+  // exist, and later from the factory hook for ones that load afterwards.
+  // Names that never appear just stay pending; the check only costs a
+  // candidatesOf() per newly loaded module.
+  function onStores(names, cb) {
+    if (typeof cb !== "function") return;
+    const found = findStores(names);
+    const pending = new Set();
+    for (const n in found) {
+      if (found[n]) {
+        try { cb(n, found[n]); } catch (err) { console.error("[mdga] onStores cb failed:", err); }
+      } else {
+        pending.add(n);
+      }
+    }
+    if (pending.size > 0) storeWatchers.push({ names: pending, cb });
   }
 
   function findFactoryByCode(...fragments) {
@@ -640,6 +667,7 @@ const MAIN_WORLD_BOOTSTRAP = `
     findByDisplayName,
     findStore,
     findStores,
+    onStores,
     findFactoryByCode,
     findAllFactoriesByCode,
     dump,
