@@ -38,9 +38,12 @@ jobs:
   exe:
     runs-on: windows-latest
     steps:
+      # actions/checkout only fetches full SHAs or branch/tag names, so a
+      # short hash like ba5d8ab fails there; fetch everything and switch here.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.REF }}
+          fetch-depth: 0
+      - run: git checkout --quiet "$env:REF"
       - shell: pwsh
         run: |
           if (Test-Path scripts/exe/build.ps1) {
@@ -58,8 +61,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.REF }}
           fetch-depth: 0 # full history and tags, for the notes range
+      - run: git checkout --quiet "$REF"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
