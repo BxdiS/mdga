@@ -1,0 +1,75 @@
+name: release
+
+# Every push to main publishes a rolling "DevBuild <sha>" release, the same
+# model as Vencord: one release, tag `devbuild` moved to the new commit, notes
+# listing what changed since the previous build. The install command always
+# fetches it:
+#   irm https://github.com/BxdiS/mdga/releases/latest/download/install.ps1 | iex
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  # actions/attest-build-provenance: signs the assets so the release page
+  # shows them as verified (gh attestation verify install.ps1 --repo BxdiS/mdga).
+  attestations: write
+  id-token: write
+
+# Two quick merges must not interleave tag moves and uploads.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history and tags, for the notes range
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx tsx scripts/check-bundles.mts
+
+      - id: build
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - run: npx tsx scripts/build-release.mts
+        env:
+          MDGA_VERSION: ${{ steps.build.outputs.short }}
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/release/install.ps1
+            dist/release/mdga-payload.json
+
+      - name: Release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(git rev-parse -q --verify "refs/tags/devbuild^{commit}" || true)
+          bash scripts/release-notes.sh "$GITHUB_REPOSITORY" "$prev" > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Edit in place rather than delete and recreate, so the download URL
+      # never 404s mid-update.
+      - name: Publish DevBuild
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="DevBuild ${{ steps.build.outputs.short }}"
+          assets=(dist/release/install.ps1 dist/release/mdga-payload.json)
+          git tag -f devbuild
+          git push -f origin refs/tags/devbuild
+          if gh release view devbuild > /dev/null 2>&1; then
+            gh release upload devbuild "${assets[@]}" --clobber
+            gh release edit devbuild --title "$title" --notes-file notes.md --latest
+          else
+            gh release create devbuild "${assets[@]}" --title "$title" --notes-file notes.md --latest
+          fi
