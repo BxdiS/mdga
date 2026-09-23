@@ -442,7 +442,7 @@ module.exports = require("./$($main.Replace('\', '/'))");
   Clear-Host -ErrorAction SilentlyContinue
   foreach ($t in $targets) { Install-Mdga $t $payload $enabledIds }
   Say ""
-  Say "mdga is installed. Run the same command again to change modules or uninstall." Cyan
+  Say "mdga is installed. Run the installer again to change modules or uninstall." Cyan
   Say "Discord updates replace app.asar, so run it again after a Discord update." DarkGray
 }
 
