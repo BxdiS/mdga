@@ -81,4 +81,21 @@ try {
   errlog("outer setup failed:", outer);
 }
 
+// Graceful quit for the installer. taskkill /F killed Discord before it
+// flushed Local Storage, which logged the user out. The installer drops this
+// file next to app.asar instead; we notice it and quit the normal way, same
+// as "Quit Discord" in the tray. Local file only, nothing leaves the machine.
+try {
+  const fs = require("fs");
+  const QUIT_REQUEST = path.join(__dirname, "..", "..", "mdga-quit-request");
+  fs.watchFile(QUIT_REQUEST, { interval: 1000 }, (cur) => {
+    if (cur.mtimeMs === 0) return; // file absent
+    try { fs.unlinkSync(QUIT_REQUEST); } catch {}
+    log("quit requested by installer");
+    require("electron").app.quit();
+  });
+} catch (err) {
+  errlog("quit watcher setup failed:", err);
+}
+
 log("payload finished setup");

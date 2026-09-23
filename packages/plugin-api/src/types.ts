@@ -45,9 +45,8 @@ export interface Module extends ModuleManifest {
   // keys it by module id so re-enabling replaces the sheet cleanly.
   css?: string;
   // Runtime hook executed in the main world after `window.mdga` is installed.
-  // Serialized at bundle time (Function.prototype.toString) so the body must
-  // be self-contained — no closure captures, no imports. Only `mdga` and the
-  // usual browser globals are in scope.
+  // The installer bundles the whole module entry with esbuild, so the hook
+  // may use imports and module-level helpers like any other code.
   runtime?: () => void;
   onStart?(ctx: ModuleContext): void | Promise<void>;
   onStop?(ctx: ModuleContext): void | Promise<void>;

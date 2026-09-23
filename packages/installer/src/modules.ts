@@ -2,23 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Module } from "@mdga/plugin-api";
+import { bundleModule } from "./bundle.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-// Discover and load every P0 module package's manifest. We import their
-// entry files directly (tsx handles the .ts loading) and pull out the default
-// export produced by defineModule(). Third-party plugins live elsewhere and
-// are loaded at runtime, not here.
+// Discover every P0 module package. The manifest (id, label, enabled) comes
+// from importing the entry directly (tsx handles the .ts loading); the code
+// that ships to Discord comes from an esbuild bundle of the same entry.
+// Third-party plugins live elsewhere and are loaded at runtime, not here.
 
 export interface ModuleRecord {
   id: string;
   label: string;
   description: string;
   defaultEnabled: boolean;
-  css?: string;
-  // Serialized runtime function body — evaluated in the main world after
-  // window.mdga is installed. Empty if the module has no runtime hook.
-  runtime?: string;
+  // IIFE bundle of the module entry (see bundleModule). The preload splices
+  // it into the main-world script as code, so no eval is needed in Discord.
+  code: string;
 }
 
 function findModulesDir(): string {
@@ -47,15 +47,14 @@ export async function collectModules(): Promise<ModuleRecord[]> {
       const imported = (await import(url)) as { default?: Module };
       const mod = imported.default;
       if (!mod || typeof mod.id !== "string") continue;
+      // Nothing to ship for a module with neither CSS nor runtime.
+      if (typeof mod.css !== "string" && typeof mod.runtime !== "function") continue;
       out.push({
         id: mod.id,
         label: mod.label,
         description: mod.description,
         defaultEnabled: mod.defaultEnabled,
-        ...(typeof mod.css === "string" ? { css: mod.css } : {}),
-        ...(typeof mod.runtime === "function"
-          ? { runtime: Function.prototype.toString.call(mod.runtime) }
-          : {}),
+        code: await bundleModule(entry),
       });
     } catch (err) {
       console.warn(`[mdga] failed to load module ${entry}:`, (err as Error).message);
