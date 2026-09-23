@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release notes for a DevBuild: one line per change on main since the
+# Release notes for a build: one line per change on main since the
 # previous build, CLI style.
 #
 #   scripts/release-notes.sh <owner/repo> [previous-build-sha]
