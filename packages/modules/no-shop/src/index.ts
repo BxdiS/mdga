@@ -37,8 +37,9 @@ function runtime() {
       self: unknown,
     ) => unknown,
   ) => { unpatch(): void };
-  const findStore = mdga["findStore"] as (name: string) => Record<string, unknown> | null;
-  const findByProps = mdga["findByProps"] as (...p: string[]) => Record<string, unknown> | null;
+  const findStores = mdga["findStores"] as (
+    names: string[],
+  ) => Record<string, Record<string, unknown> | null>;
 
   // Level 3: block outbound HTTP requests to /quests/* at the XHR layer.
   // Discord's public REST facade (findByProps("get","post",…)) is only ONE
@@ -108,12 +109,12 @@ function runtime() {
 
   const STORE_STAMP = Symbol.for("mdga.no-shop.stores-patched");
   const installStores = (): boolean => {
-    let touched = false;
-    const qs = findStore("QuestStore") as Record<string, (...a: unknown[]) => unknown> | null;
+    // One pass over the module graph for both stores.
+    const found = findStores(["QuestStore", "UnenrolledActivityQuestStore"]);
+    const qs = (found["QuestStore"] ?? null) as Record<string, (...a: unknown[]) => unknown> | null;
     if (qs && !(qs as unknown as Record<symbol, unknown>)[STORE_STAMP]) {
       const proto = Object.getPrototypeOf(qs) as Record<string, unknown>;
       const emptyMap = new Map();
-      const emptySet = new Set();
       // Method → forced return. Missing methods are skipped safely.
       const overrides: Record<string, unknown> = {
         getQuest: undefined,
@@ -143,15 +144,13 @@ function runtime() {
           patches.push(patch(proto, name, "instead", () => value));
         }
       }
-      void emptySet;
       try {
         Object.defineProperty(qs, STORE_STAMP, { value: true, enumerable: false });
       } catch { (qs as unknown as Record<symbol, unknown>)[STORE_STAMP] = true; }
       console.log("[mdga] no-shop: neutralised QuestStore");
-      touched = true;
     }
 
-    const uqs = findStore("UnenrolledActivityQuestStore") as
+    const uqs = (found["UnenrolledActivityQuestStore"] ?? null) as
       | Record<string, (...a: unknown[]) => unknown>
       | null;
     if (uqs && !(uqs as unknown as Record<symbol, unknown>)[STORE_STAMP]) {
@@ -169,9 +168,12 @@ function runtime() {
         Object.defineProperty(uqs, STORE_STAMP, { value: true, enumerable: false });
       } catch { (uqs as unknown as Record<symbol, unknown>)[STORE_STAMP] = true; }
       console.log("[mdga] no-shop: neutralised UnenrolledActivityQuestStore");
-      touched = true;
     }
-    return touched;
+    // Done only when both are patched. UnenrolledActivityQuestStore loads
+    // later than QuestStore; stopping on the first hit left it unpatched.
+    const stamped = (s: unknown): boolean =>
+      !!s && !!(s as Record<symbol, unknown>)[STORE_STAMP];
+    return stamped(qs) && stamped(uqs);
   };
 
   const onWebpackReady = mdga["onWebpackReady"] as (cb: () => void) => void;
@@ -186,8 +188,21 @@ function runtime() {
       attempts++;
       if (!restDone) restDone = installRest();
       if (!storesDone) storesDone = installStores();
-      if ((restDone && storesDone) || attempts > 200) clearInterval(poll);
+      if ((restDone && storesDone) || attempts > 200) {
+        clearInterval(poll);
+        if (!storesDone) slowPoll();
+      }
     }, 25);
+    // UnenrolledActivityQuestStore can load after the 5 s fast window.
+    // Keep looking once a second for another minute; findStores is ~13 ms
+    // per pass, so this costs well under 1% CPU.
+    const slowPoll = (): void => {
+      let slow = 0;
+      const timer = setInterval(() => {
+        slow++;
+        if (installStores() || slow >= 60) clearInterval(timer);
+      }, 1000);
+    };
   });
 }
 
