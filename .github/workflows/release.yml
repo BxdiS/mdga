@@ -1,14 +1,21 @@
 name: release
 
-# Every push to main publishes a rolling "DevBuild <sha>" release, the same
-# model as Vencord: one release, tag `devbuild` moved to the new commit, notes
-# listing what changed since the previous build. The install command always
-# fetches it:
+# Every push to main publishes a release named after its commit, "build
+# <sha7>", tagged build-<sha7>. Older builds stay in the release history; the
+# newest build on main is marked latest, so the install command fetches it:
 #   irm https://github.com/BxdiS/mdga/releases/latest/download/install.ps1 | iex
+#
+# Run it by hand with a `ref` to (re)build an older commit; that release is
+# not marked latest unless the ref is main's head.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit to build (default main)
+        required: false
+        default: main
 
 permissions:
   contents: write
@@ -17,22 +24,33 @@ permissions:
   attestations: write
   id-token: write
 
-# Two quick merges must not interleave tag moves and uploads.
+# Two quick merges must not interleave tag pushes and uploads.
 concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  REF: ${{ inputs.ref || github.sha }}
+
 jobs:
-  # mdga-installer.exe needs the C# compiler that ships with Windows.
+  # mdga-installer.exe needs the C# compiler that ships with Windows. Commits
+  # from before the exe existed build without it.
   exe:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/exe/build.ps1 -Out dist/mdga-installer.exe
+        with:
+          ref: ${{ env.REF }}
+      - shell: pwsh
+        run: |
+          if (Test-Path scripts/exe/build.ps1) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File scripts/exe/build.ps1 -Out dist/mdga-installer.exe
+          } else { Write-Host "no scripts/exe at this commit, skipping the exe" }
       - uses: actions/upload-artifact@v4
         with:
           name: exe
           path: dist/mdga-installer.exe
+          if-no-files-found: ignore
 
   release:
     needs: exe
@@ -40,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.REF }}
           fetch-depth: 0 # full history and tags, for the notes range
       - uses: actions/setup-node@v4
         with:
@@ -50,43 +69,45 @@ jobs:
       - run: npx tsx scripts/check-bundles.mts
 
       - id: build
-        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          git fetch -q origin main
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then latest=true; else latest=false; fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
       - run: npx tsx scripts/build-release.mts
         env:
           MDGA_VERSION: ${{ steps.build.outputs.short }}
       - uses: actions/download-artifact@v4
+        continue-on-error: true # absent for commits before the exe
         with:
           name: exe
           path: dist/release
 
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            dist/release/install.ps1
-            dist/release/mdga-payload.json
-            dist/release/mdga-installer.exe
+          subject-path: dist/release/*
 
+      # Notes cover the commits since the nearest earlier build.
       - name: Release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          prev=$(git rev-parse -q --verify "refs/tags/devbuild^{commit}" || true)
+          prev=$(git describe --tags --abbrev=0 --match 'build-*' HEAD^ 2>/dev/null || true)
+          [ -n "$prev" ] && prev=$(git rev-parse "$prev^{commit}")
           bash scripts/release-notes.sh "$GITHUB_REPOSITORY" "$prev" > notes.md
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
 
-      # Edit in place rather than delete and recreate, so the download URL
-      # never 404s mid-update.
-      - name: Publish DevBuild
+      - name: Publish build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="DevBuild ${{ steps.build.outputs.short }}"
-          assets=(dist/release/install.ps1 dist/release/mdga-payload.json dist/release/mdga-installer.exe)
-          git tag -f devbuild
-          git push -f origin refs/tags/devbuild
-          if gh release view devbuild > /dev/null 2>&1; then
-            gh release upload devbuild "${assets[@]}" --clobber
-            gh release edit devbuild --title "$title" --notes-file notes.md --latest
+          short=${{ steps.build.outputs.short }}
+          tag="build-$short"
+          git tag -f "$tag"
+          git push -f origin "refs/tags/$tag"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" dist/release/* --clobber
+            gh release edit "$tag" --title "build $short" --notes-file notes.md --latest=${{ steps.build.outputs.latest }}
           else
-            gh release create devbuild "${assets[@]}" --title "$title" --notes-file notes.md --latest
+            gh release create "$tag" dist/release/* --title "build $short" --notes-file notes.md --latest=${{ steps.build.outputs.latest }}
           fi
