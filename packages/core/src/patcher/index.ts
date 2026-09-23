@@ -117,6 +117,10 @@ export function patch(
   if (target === null || (typeof target !== "object" && typeof target !== "function")) {
     throw new Error("mdga patcher: target must be an object or function");
   }
+  // Modules call this from untyped runtime code, so check the phase too.
+  if (phase !== "before" && phase !== "instead" && phase !== "after") {
+    throw new Error("mdga patcher: phase must be before | instead | after");
+  }
   const state = getOrInstall(target, method);
   const list = state[phase];
   list.push(handler);

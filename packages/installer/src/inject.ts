@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extract, pack } from "./asar.js";
+import { bundleBootstrap } from "./bundle.js";
 import type { DiscordInstall } from "./locate.js";
 import { logger } from "./logger.js";
 import { collectModules } from "./modules.js";
@@ -84,6 +85,9 @@ export async function inject(install: DiscordInstall): Promise<void> {
   fs.copyFileSync(path.join(TEMPLATE_DIR, "mdga_main.js"), path.join(mdgaDir, "main.js"));
   fs.copyFileSync(path.join(TEMPLATE_DIR, "mdga_preload.js"), path.join(mdgaDir, "preload.js"));
   fs.writeFileSync(path.join(tempDir, "mdga_entry.js"), makeEntryStub(originalMain));
+
+  fs.writeFileSync(path.join(mdgaDir, "bootstrap.js"), await bundleBootstrap());
+  logger.info(`bundled main-world bootstrap from packages/core`);
 
   const modules = await collectModules();
   fs.writeFileSync(path.join(mdgaDir, "modules.json"), JSON.stringify(modules, null, 2));

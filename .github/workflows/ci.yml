@@ -18,4 +18,4 @@ jobs:
       - run: npm run typecheck
       - run: node --check packages/installer/src/templates/mdga_preload.js
       - run: node --check packages/installer/src/templates/mdga_main.js
-      - run: node scripts/check-bootstrap.mjs
+      - run: npx tsx scripts/check-bundles.mts
