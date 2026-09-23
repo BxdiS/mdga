@@ -1,6 +1,6 @@
-# mdga
+# Make Discord Great Again
 
-Make Discord Great Again: a Windows Discord client mod that takes the app back toward its 2018–2020 look by removing the shop, quests, avatar decorations, nameplates, profile effects, Nitro name styles and similar post-IPO additions. Every removal is its own module, and you choose which ones to install.
+Windows Discord client mod that takes the app back toward its 2018–2020 look by removing the shop, quests, avatar decorations, nameplates, profile effects, Nitro name styles and similar post-IPO additions. Every removal is its own module, and you choose which ones to install.
 
 mdga only changes what your client shows. It sends nothing to Discord and does not change your requests, so the server sees an ordinary client.
 
