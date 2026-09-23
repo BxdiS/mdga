@@ -56,7 +56,9 @@ function runtime() {
       self: unknown,
     ) => unknown,
   ) => { unpatch(): void };
-  const findStore = mdga["findStore"] as (name: string) => Record<string, unknown> | null;
+  const findStores = mdga["findStores"] as (
+    names: string[],
+  ) => Record<string, Record<string, unknown> | null>;
 
   // Level 3: block outbound HTTP for the Clips REST surface at the XHR
   // layer (same reason as no-shop: Discord's REST facade is only one of
@@ -136,8 +138,10 @@ function runtime() {
     ];
     const emptyArray = ["getClips", "getRecentClips", "getPendingUploads"];
 
+    // One pass over the module graph for all three names.
+    const found = findStores(storeNames);
     for (const name of storeNames) {
-      const store = findStore(name) as Record<string, unknown> | null;
+      const store = found[name] ?? null;
       if (!store) continue;
       if ((store as unknown as Record<symbol, unknown>)[STORE_STAMP]) continue;
       const proto = Object.getPrototypeOf(store) as Record<string, unknown>;

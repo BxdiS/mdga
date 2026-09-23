@@ -33,18 +33,10 @@ const CSS = `
 /* ─── Profile effects ───
    The animated confetti/sparkle overlay Discord paints on top of profile
    popouts is rendered as an absolutely-positioned element whose class
-   contains "profileEffect". Kill both the container and any child media
-   (video/img/canvas) so nothing is left running behind the modal. */
+   contains "profileEffect". Hiding the container takes its video/img/canvas
+   children with it. */
 [class*="profileEffects"],
 [class*="profileEffect_"] {
-  display: none !important;
-}
-[class*="profileEffects"] video,
-[class*="profileEffects"] img,
-[class*="profileEffects"] canvas,
-[class*="profileEffect_"] video,
-[class*="profileEffect_"] img,
-[class*="profileEffect_"] canvas {
   display: none !important;
 }
 `;

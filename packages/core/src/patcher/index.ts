@@ -39,8 +39,11 @@ function getOrInstall(target: object, method: string): WrapperState {
   const existing = (current as Wrapped)[STATE];
   if (existing) return existing;
 
+  // Do not .bind(target): for prototype methods (XMLHttpRequest.prototype.open)
+  // the native impl needs the instance as receiver, and a copy bound to the
+  // prototype throws "Illegal invocation". The wrapper forwards `this` as-is.
   const state: WrapperState = {
-    original: current.bind(target) as (...args: unknown[]) => unknown,
+    original: current as (...args: unknown[]) => unknown,
     before: [],
     instead: [],
     after: [],

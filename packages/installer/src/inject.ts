@@ -43,12 +43,11 @@ export async function inject(install: DiscordInstall): Promise<void> {
   const origPath = path.join(resources, "app.asar.orig");
   const tempDir = path.join(resources, "_mdga_tmp");
 
-  if (!fs.existsSync(origPath)) {
-    fs.copyFileSync(asarPath, origPath);
-    logger.info(`backed up app.asar → app.asar.orig`);
-  } else {
-    // Reinject: use the pristine backup as the source of truth so we never
-    // chain our shim onto a previously-injected asar.
+  // Reinject: use the pristine backup as the source of truth so we never
+  // chain our shim onto a previously-injected asar.
+  // Extraction always reads app.asar so asar finds app.asar.unpacked.
+  const hasBackup = fs.existsSync(origPath);
+  if (hasBackup) {
     fs.copyFileSync(origPath, asarPath);
     logger.info(`reinjecting from existing app.asar.orig`);
   }
@@ -62,7 +61,21 @@ export async function inject(install: DiscordInstall): Promise<void> {
   const pkg = JSON.parse(pkgRaw) as { main?: unknown };
   const originalMain = pkg.main;
   if (typeof originalMain !== "string" || originalMain.length === 0) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
     throw new Error(`app.asar package.json has no main entry`);
+  }
+  // Without a backup, an already-patched asar would make mdga_entry.js
+  // require itself and Discord would not start. Refuse instead.
+  if (originalMain === "mdga_entry.js") {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    throw new Error(
+      `app.asar is already patched by mdga and no clean app.asar.orig exists; ` +
+        `reinstall Discord to get a clean app.asar, then run install again`,
+    );
+  }
+  if (!hasBackup) {
+    fs.copyFileSync(asarPath, origPath);
+    logger.info(`backed up app.asar → app.asar.orig`);
   }
   logger.info(`original main: ${originalMain}`);
 
@@ -79,7 +92,15 @@ export async function inject(install: DiscordInstall): Promise<void> {
   pkg.main = "mdga_entry.js";
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-  await pack(tempDir, asarPath);
+  // Pack next to the target and rename over it, so a crash mid-write never
+  // leaves Discord with a truncated app.asar.
+  const packTmp = asarPath + ".mdga-tmp";
+  try {
+    await pack(tempDir, packTmp);
+    fs.renameSync(packTmp, asarPath);
+  } finally {
+    if (fs.existsSync(packTmp)) fs.rmSync(packTmp, { force: true });
+  }
   fs.rmSync(tempDir, { recursive: true, force: true });
   logger.info(`repacked → app.asar`);
 }

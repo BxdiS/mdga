@@ -160,8 +160,14 @@ const MAIN_WORLD_BOOTSTRAP = `
   }
 
   // Fallback: chunk-array probe. Works even if the .m hook installed too late.
+  // Every chunk file runs "self.webpackChunkdiscord_app ||= []", so the
+  // setter fires once per chunk. Probe each array once, and stop once the
+  // require is captured.
   const CHUNK_KEY = "webpackChunkdiscord_app";
+  const probed = new WeakSet();
   function probe(chunkArray) {
+    if (wpRequire != null || probed.has(chunkArray)) return;
+    probed.add(chunkArray);
     chunkArray.push([
       [Symbol("mdga_probe")],
       {},
@@ -203,17 +209,16 @@ const MAIN_WORLD_BOOTSTRAP = `
   // Iterate every module we've observed by wrapping factories, plus wpRequire.c
   // (whichever is bigger). Yields the module's raw exports object.
   function* iterateExports() {
-    const seen = new Set();
+    // observedExports keys are unique already; for wpRequire.c only skip ids
+    // the first loop has covered. A plain "in" check avoids building a Set
+    // of every module id on each scan.
     for (const id in observedExports) {
-      if (seen.has(id)) continue;
-      seen.add(id);
       let e; try { e = observedExports[id]; } catch { continue; }
       if (e != null) yield { id, exports: e };
     }
     if (wpRequire && wpRequire.c) {
       for (const id in wpRequire.c) {
-        if (seen.has(id)) continue;
-        seen.add(id);
+        if (id in observedExports) continue;
         let e; try { e = wpRequire.c[id] && wpRequire.c[id].exports; } catch { continue; }
         if (e != null) yield { id, exports: e };
       }
@@ -312,6 +317,29 @@ const MAIN_WORLD_BOOTSTRAP = `
       } catch {}
     }
     return null;
+  }
+
+  // Look up several stores in a single pass over the module graph. Returns
+  // { [name]: store | null }. Stops early once every name is found.
+  function findStores(names) {
+    const out = Object.create(null);
+    let left = 0;
+    for (const n of names || []) { if (!(n in out)) { out[n] = null; left++; } }
+    if (left === 0) return out;
+    for (const { exports } of iterateExports()) {
+      try {
+        for (const cand of candidatesOf(exports)) {
+          if (cand == null || typeof cand !== "object") continue;
+          const ctor = safeGet(cand, "constructor");
+          const name = ctor && safeGet(ctor, "displayName");
+          if (typeof name === "string" && name in out && out[name] === null) {
+            out[name] = cand;
+            if (--left === 0) return out;
+          }
+        }
+      } catch {}
+    }
+    return out;
   }
 
   function findFactoryByCode(...fragments) {
@@ -413,7 +441,9 @@ const MAIN_WORLD_BOOTSTRAP = `
         parent.appendChild(node);
       } else {
         // No DOM at all yet — queue until it's ready.
+        // Skip if removeCSS (or a re-inject) replaced this node meanwhile.
         document.addEventListener("DOMContentLoaded", () => {
+          if (cssNodes.get(id) !== node) return;
           (document.head || document.documentElement).appendChild(node);
         }, { once: true });
       }
@@ -609,6 +639,7 @@ const MAIN_WORLD_BOOTSTRAP = `
     findByCode,
     findByDisplayName,
     findStore,
+    findStores,
     findFactoryByCode,
     findAllFactoriesByCode,
     dump,
