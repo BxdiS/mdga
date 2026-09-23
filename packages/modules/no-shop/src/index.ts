@@ -37,9 +37,10 @@ function runtime() {
       self: unknown,
     ) => unknown,
   ) => { unpatch(): void };
-  const findStores = mdga["findStores"] as (
+  const onStores = mdga["onStores"] as (
     names: string[],
-  ) => Record<string, Record<string, unknown> | null>;
+    cb: (name: string, store: object) => void,
+  ) => void;
 
   // Level 3: block outbound HTTP requests to /quests/* at the XHR layer.
   // Discord's public REST facade (findByProps("get","post",…)) is only ONE
@@ -108,101 +109,77 @@ function runtime() {
   };
 
   const STORE_STAMP = Symbol.for("mdga.no-shop.stores-patched");
-  const installStores = (): boolean => {
-    // One pass over the module graph for both stores.
-    const found = findStores(["QuestStore", "UnenrolledActivityQuestStore"]);
-    const qs = (found["QuestStore"] ?? null) as Record<string, (...a: unknown[]) => unknown> | null;
-    if (qs && !(qs as unknown as Record<symbol, unknown>)[STORE_STAMP]) {
-      const proto = Object.getPrototypeOf(qs) as Record<string, unknown>;
-      const emptyMap = new Map();
-      // Method → forced return. Missing methods are skipped safely.
-      const overrides: Record<string, unknown> = {
-        getQuest: undefined,
-        getQuestConfig: undefined,
-        getQuestPreviewOverride: undefined,
-        getQuestLoadedViaPreview: undefined,
-        getFetchQuestPreviewError: null,
-        getStreamHeartbeatFailure: null,
-        getRewardCode: null,
-        getRewards: null,
-        getOptimisticProgress: null,
-        selectedTaskPlatform: null,
-        getExpiredQuestsMap: emptyMap,
-        isFetchingQuestPreview: false,
-        isEnrolling: false,
-        isClaimingReward: false,
-        isFetchingRewardCode: false,
-        isDismissingContent: false,
-        isAdContentDismissed: true,
-        isProgressingOnDesktop: false,
-        isQuestExpired: true,
-        isFetchingEarnedQuestToDeliverByPlacement: false,
-      };
-      for (const name in overrides) {
-        if (typeof proto[name] === "function") {
-          const value = overrides[name];
-          patches.push(patch(proto, name, "instead", () => value));
-        }
-      }
-      try {
-        Object.defineProperty(qs, STORE_STAMP, { value: true, enumerable: false });
-      } catch { (qs as unknown as Record<symbol, unknown>)[STORE_STAMP] = true; }
-      console.log("[mdga] no-shop: neutralised QuestStore");
-    }
+  const stamp = (store: object): boolean => {
+    const s = store as Record<symbol, unknown>;
+    if (s[STORE_STAMP]) return false;
+    try {
+      Object.defineProperty(store, STORE_STAMP, { value: true, enumerable: false });
+    } catch { s[STORE_STAMP] = true; }
+    return true;
+  };
 
-    const uqs = (found["UnenrolledActivityQuestStore"] ?? null) as
-      | Record<string, (...a: unknown[]) => unknown>
-      | null;
-    if (uqs && !(uqs as unknown as Record<symbol, unknown>)[STORE_STAMP]) {
-      const proto = Object.getPrototypeOf(uqs) as Record<string, unknown>;
-      if (typeof proto["getState"] === "function") {
-        patches.push(patch(proto, "getState", "instead", () => ({ dismissedQuestIds: [] })));
+  const patchQuestStore = (qs: object): void => {
+    if (!stamp(qs)) return;
+    const proto = Object.getPrototypeOf(qs) as Record<string, unknown>;
+    const emptyMap = new Map();
+    // Method → forced return. Missing methods are skipped safely.
+    const overrides: Record<string, unknown> = {
+      getQuest: undefined,
+      getQuestConfig: undefined,
+      getQuestPreviewOverride: undefined,
+      getQuestLoadedViaPreview: undefined,
+      getFetchQuestPreviewError: null,
+      getStreamHeartbeatFailure: null,
+      getRewardCode: null,
+      getRewards: null,
+      getOptimisticProgress: null,
+      selectedTaskPlatform: null,
+      getExpiredQuestsMap: emptyMap,
+      isFetchingQuestPreview: false,
+      isEnrolling: false,
+      isClaimingReward: false,
+      isFetchingRewardCode: false,
+      isDismissingContent: false,
+      isAdContentDismissed: true,
+      isProgressingOnDesktop: false,
+      isQuestExpired: true,
+      isFetchingEarnedQuestToDeliverByPlacement: false,
+    };
+    for (const name in overrides) {
+      if (typeof proto[name] === "function") {
+        const value = overrides[name];
+        patches.push(patch(proto, name, "instead", () => value));
       }
-      if (typeof proto["isDismissed"] === "function") {
-        patches.push(patch(proto, "isDismissed", "instead", () => true));
-      }
-      if (typeof proto["getDismissedQuestIds"] === "function") {
-        patches.push(patch(proto, "getDismissedQuestIds", "instead", () => new Set()));
-      }
-      try {
-        Object.defineProperty(uqs, STORE_STAMP, { value: true, enumerable: false });
-      } catch { (uqs as unknown as Record<symbol, unknown>)[STORE_STAMP] = true; }
-      console.log("[mdga] no-shop: neutralised UnenrolledActivityQuestStore");
     }
-    // Done only when both are patched. UnenrolledActivityQuestStore loads
-    // later than QuestStore; stopping on the first hit left it unpatched.
-    const stamped = (s: unknown): boolean =>
-      !!s && !!(s as Record<symbol, unknown>)[STORE_STAMP];
-    return stamped(qs) && stamped(uqs);
+    console.log("[mdga] no-shop: neutralised QuestStore");
+  };
+
+  const patchUnenrolledStore = (uqs: object): void => {
+    if (!stamp(uqs)) return;
+    const proto = Object.getPrototypeOf(uqs) as Record<string, unknown>;
+    if (typeof proto["getState"] === "function") {
+      patches.push(patch(proto, "getState", "instead", () => ({ dismissedQuestIds: [] })));
+    }
+    if (typeof proto["isDismissed"] === "function") {
+      patches.push(patch(proto, "isDismissed", "instead", () => true));
+    }
+    if (typeof proto["getDismissedQuestIds"] === "function") {
+      patches.push(patch(proto, "getDismissedQuestIds", "instead", () => new Set()));
+    }
+    console.log("[mdga] no-shop: neutralised UnenrolledActivityQuestStore");
   };
 
   const onWebpackReady = mdga["onWebpackReady"] as (cb: () => void) => void;
   onWebpackReady(() => {
-    // Quest fetches fire from Discord's boot code very early after webpack
-    // is ready. Poll on a tight interval until each guard lands, then stop.
-    let restDone = installRest();
-    let storesDone = installStores();
-    let attempts = 0;
-    if (restDone && storesDone) return;
-    const poll = setInterval(() => {
-      attempts++;
-      if (!restDone) restDone = installRest();
-      if (!storesDone) storesDone = installStores();
-      if ((restDone && storesDone) || attempts > 200) {
-        clearInterval(poll);
-        if (!storesDone) slowPoll();
-      }
-    }, 25);
-    // UnenrolledActivityQuestStore can load after the 5 s fast window.
-    // Keep looking once a second for another minute; findStores is ~13 ms
-    // per pass, so this costs well under 1% CPU.
-    const slowPoll = (): void => {
-      let slow = 0;
-      const timer = setInterval(() => {
-        slow++;
-        if (installStores() || slow >= 60) clearInterval(timer);
-      }, 1000);
-    };
+    // XMLHttpRequest exists from the start, so this lands on the first call.
+    installRest();
+    // Patch each store the moment its module loads. This used to be a 25 ms
+    // poll with a full module-graph scan per tick, which also gave up after
+    // 5 s and missed UnenrolledActivityQuestStore when it loaded late.
+    onStores(["QuestStore", "UnenrolledActivityQuestStore"], (name, store) => {
+      if (name === "QuestStore") patchQuestStore(store);
+      else patchUnenrolledStore(store);
+    });
   });
 }
 

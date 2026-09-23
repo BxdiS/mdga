@@ -34,6 +34,10 @@ li[class^="menuItem_"]:has(svg path[d^="${CLIP_ICON_PATH_PREFIX}"]) + [class*="s
 [data-mdga-no-clips-hidden] + [class*="divider_"],
 [data-mdga-no-clips-hidden] + [role="separator"],
 [data-mdga-no-clips-hidden] + [class*="separator_" i] { display: none !important; }
+/* The Keybind Action dropdown sizes its content_<hash> list with an inline
+   height (840px on Stable 1.0.9259) computed for every option, so hiding
+   "Save Clip" left an empty row. Let the list size to what is visible. */
+[class*="content_"]:has(> div[role="option"][data-mdga-no-clips-hidden]) { height: auto !important; }
 `;
 
 // Trust & Safety fence: we only patch client read-side state and drop our
@@ -56,9 +60,10 @@ function runtime() {
       self: unknown,
     ) => unknown,
   ) => { unpatch(): void };
-  const findStores = mdga["findStores"] as (
+  const onStores = mdga["onStores"] as (
     names: string[],
-  ) => Record<string, Record<string, unknown> | null>;
+    cb: (name: string, store: object) => void,
+  ) => void;
 
   // Level 3: block outbound HTTP for the Clips REST surface at the XHR
   // layer (same reason as no-shop: Discord's REST facade is only one of
@@ -122,45 +127,36 @@ function runtime() {
   };
 
   const STORE_STAMP = Symbol.for("mdga.no-clips.stores-patched");
-  const installStores = (): boolean => {
-    let touched = false;
+  // Discord ships several clip-adjacent stores across builds. Names we've
+  // seen or expect: ClipsStore, ClipsRecordingStore, ClipsSettingsStore.
+  // Patch whatever is present; the rest just never fire (Stable 1.0.9259
+  // has only ClipsStore).
+  const storeNames = ["ClipsStore", "ClipsRecordingStore", "ClipsSettingsStore"];
+  // Broad neutralisation table — each entry is patched only if the method
+  // exists, so an unknown build won't blow up.
+  const boolFalse = ["isRecording", "isEnabled", "isClipping", "isSaving", "isUploading"];
+  const nullish = [
+    "getCurrentClip", "getClip", "getClipById", "getActiveClip",
+    "getRecordingState", "getUploadState", "getLastClip",
+  ];
+  const emptyArray = ["getClips", "getRecentClips", "getPendingUploads"];
 
-    // Discord ships several clip-adjacent stores across builds. Names we've
-    // seen or expect: ClipsStore, ClipsRecordingStore, ClipsSettingsStore.
-    // Patch whatever is present; skip the rest.
-    const storeNames = ["ClipsStore", "ClipsRecordingStore", "ClipsSettingsStore"];
-    // Broad neutralisation table — each entry is patched only if the method
-    // exists, so an unknown build won't blow up.
-    const boolFalse = ["isRecording", "isEnabled", "isClipping", "isSaving", "isUploading"];
-    const nullish = [
-      "getCurrentClip", "getClip", "getClipById", "getActiveClip",
-      "getRecordingState", "getUploadState", "getLastClip",
-    ];
-    const emptyArray = ["getClips", "getRecentClips", "getPendingUploads"];
-
-    // One pass over the module graph for all three names.
-    const found = findStores(storeNames);
-    for (const name of storeNames) {
-      const store = found[name] ?? null;
-      if (!store) continue;
-      if ((store as unknown as Record<symbol, unknown>)[STORE_STAMP]) continue;
-      const proto = Object.getPrototypeOf(store) as Record<string, unknown>;
-      for (const m of boolFalse) {
-        if (typeof proto[m] === "function") patches.push(patch(proto, m, "instead", () => false));
-      }
-      for (const m of nullish) {
-        if (typeof proto[m] === "function") patches.push(patch(proto, m, "instead", () => null));
-      }
-      for (const m of emptyArray) {
-        if (typeof proto[m] === "function") patches.push(patch(proto, m, "instead", () => []));
-      }
-      try {
-        Object.defineProperty(store, STORE_STAMP, { value: true, enumerable: false });
-      } catch { (store as unknown as Record<symbol, unknown>)[STORE_STAMP] = true; }
-      console.log("[mdga] no-clips: neutralised " + name);
-      touched = true;
+  const patchStore = (name: string, store: object): void => {
+    if ((store as unknown as Record<symbol, unknown>)[STORE_STAMP]) return;
+    const proto = Object.getPrototypeOf(store) as Record<string, unknown>;
+    for (const m of boolFalse) {
+      if (typeof proto[m] === "function") patches.push(patch(proto, m, "instead", () => false));
     }
-    return touched;
+    for (const m of nullish) {
+      if (typeof proto[m] === "function") patches.push(patch(proto, m, "instead", () => null));
+    }
+    for (const m of emptyArray) {
+      if (typeof proto[m] === "function") patches.push(patch(proto, m, "instead", () => []));
+    }
+    try {
+      Object.defineProperty(store, STORE_STAMP, { value: true, enumerable: false });
+    } catch { (store as unknown as Record<symbol, unknown>)[STORE_STAMP] = true; }
+    console.log("[mdga] no-clips: neutralised " + name);
   };
 
   // Level 4: hide Clips keybind rows on the Keybinds settings page. The
@@ -198,6 +194,13 @@ function runtime() {
     // <div role="option"> with the action label as their text and no
     // description sibling, so the entry loop above misses them. Match
     // on the option's own textContent instead.
+    // Only while the Keybinds page is open, i.e. a clip keybind row is
+    // already hidden. Unscoped, this also hid emoji autocomplete options
+    // (:clipboard:, :paperclip:, server emoji like :ancient_clips:).
+    const onKeybindsPage = document.querySelector(
+      "div[class*=\"entry_\"][" + HIDE_ATTR + "]",
+    );
+    if (!onKeybindsPage) return;
     const options = document.querySelectorAll<HTMLElement>(
       "div[role=\"option\"]:not([" + HIDE_ATTR + "])",
     );
@@ -237,16 +240,10 @@ function runtime() {
 
   const onWebpackReady = mdga["onWebpackReady"] as (cb: () => void) => void;
   onWebpackReady(() => {
-    let restDone = installRest();
-    let storesDone = installStores();
-    let attempts = 0;
-    if (restDone && storesDone) return;
-    const poll = setInterval(() => {
-      attempts++;
-      if (!restDone) restDone = installRest();
-      if (!storesDone) storesDone = installStores();
-      if ((restDone && storesDone) || attempts > 200) clearInterval(poll);
-    }, 25);
+    // XMLHttpRequest exists from the start, so this lands on the first call.
+    installRest();
+    // Patch each store the moment its module loads instead of polling.
+    onStores(storeNames, patchStore);
   });
 }
 
