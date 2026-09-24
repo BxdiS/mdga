@@ -5,6 +5,7 @@
     { "name": "installer", "path": "packages/installer" },
     { "name": "plugin-api", "path": "packages/plugin-api" },
     { "name": "module: classic-profile", "path": "packages/modules/classic-profile" },
+    { "name": "module: no-quests", "path": "packages/modules/no-quests" },
     { "name": "module: no-shop", "path": "packages/modules/no-shop" },
     { "name": "module: no-nitro-spam", "path": "packages/modules/no-nitro-spam" },
     { "name": "module: no-super-reactions", "path": "packages/modules/no-super-reactions" },
