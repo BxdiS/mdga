@@ -6,7 +6,7 @@ import { defineModule } from "@mdga/plugin-api";
 // keeps hover targets, focus rings and keyboard navigation gone too.
 //
 // Scope: Quests only, end to end (UI + store + XHR). The Shop row next to
-// it belongs to no-shop; the Nitro row is not handled yet.
+// it belongs to no-shop; the Nitro row belongs to no-nitro-tab.
 const CSS = `
 li[role="listitem"]:has(a[data-list-item-id$="___quests"]) { display: none !important; }
 /* The Quests item is wrapped in a shine-animation container; collapse it too
