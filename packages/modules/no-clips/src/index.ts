@@ -71,7 +71,7 @@ function runtime() {
   ) => void;
 
   // Level 3: block outbound HTTP for the Clips REST surface at the XHR
-  // layer (same reason as no-shop: Discord's REST facade is only one of
+  // layer (same reason as no-quests: Discord's REST facade is only one of
   // the call sites; the fetchers use a lower-level HTTP module).
   const REST_STAMP = "__mdga_no_clips_xhr__";
   const installRest = (): boolean => {
