@@ -8,6 +8,7 @@
     { "name": "module: no-quests", "path": "packages/modules/no-quests" },
     { "name": "module: no-shop", "path": "packages/modules/no-shop" },
     { "name": "module: no-nitro-spam", "path": "packages/modules/no-nitro-spam" },
+    { "name": "module: no-nitro-tab", "path": "packages/modules/no-nitro-tab" },
     { "name": "module: no-super-reactions", "path": "packages/modules/no-super-reactions" },
     { "name": "module: no-hypesquad", "path": "packages/modules/no-hypesquad" },
     { "name": "module: no-boost-gift-badges", "path": "packages/modules/no-boost-gift-badges" },

@@ -3,7 +3,7 @@ import { defineModule } from "@mdga/plugin-api";
 // The Shop row in the DM sidebar, keyed by the stable data-list-item-id
 // suffix (seen on Stable: "private-channels-uid_2783___shop"). Hiding the
 // <li> removes its hover target and keyboard focus too. The Nitro row next
-// to it (___nitro) is a different feature and stays.
+// to it (___nitro) is a different feature, handled by no-nitro-tab.
 const CSS = `
 li[role="listitem"]:has(a[data-list-item-id$="___shop"]) { display: none !important; }
 div[class^="wrapper__"]:has(> li[role="listitem"] a[data-list-item-id$="___shop"]) { display: none !important; }
