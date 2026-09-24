@@ -35,6 +35,45 @@ const CSS = `
 [class*="profileEffect_"] {
   display: none !important;
 }
+
+/* ─── Cosmetics editor in your profile ───
+   Editing your profile opens a "Profile styles" side panel
+   (aside#user-profile-editing-panel) with the Nameplate, Avatar Decoration,
+   Display Name Style, Theme and Profile Effect/Frame tiles, and a "Show
+   Styles" tab that reopens it. The avatar and banner stay editable from the
+   buttons on the profile header. Matched by the panel id, which does not
+   depend on the locale. */
+#user-profile-editing-panel,
+[class*="editingPanelExpandButtonDefaultContainer_"],
+[class*="editingPanelExpandButtonCompact_"],
+[aria-controls="user-profile-editing-panel"] {
+  display: none !important;
+}
+/* The panel opens expanded, and an expanded panel widens the modal
+   (--custom-modal-v2-width: 962px + panel) and takes a grid column, which
+   left an empty strip once the panel was hidden. Put the collapsed layout
+   back: the width variables are defined on the modal root (root_<hash>),
+   so inherit restores them, and "0px 1fr" is the collapsed grid. The
+   expanded state also drops the content's left border and rounds only its
+   right corners, since the panel used to sit there. */
+[class*="layoutContainer_"][class*="editingPanelExpanded_"] {
+  --custom-modal-v2-width: inherit !important;
+  --custom-modal-v2-max-width: inherit !important;
+  --custom-modal-v2-profile-width: inherit !important;
+  grid-template-columns: 0px 1fr !important;
+}
+[class*="editingPanelExpanded_"] [class*="profileContentOuter_"] {
+  border-inline-start: 1px solid var(--border-normal) !important;
+  border-radius: inherit !important;
+}
+/* The edit menus on the avatar and the banner: "Change Avatar Decoration",
+   "Change Profile Effect" and "Change Profile Frame". Item ids are
+   <menu id>-<item id>, also locale-independent. */
+#avatar-edit-context-change-decoration,
+#banner-edit-context-change-effect,
+#banner-edit-context-change-frame {
+  display: none !important;
+}
 `;
 
 type Mdga = {
@@ -149,8 +188,8 @@ export default defineModule({
   id: "classic-profile",
   label: "Classic profile",
   description:
-    "Removes avatar decorations, profile effects, nameplates, and profile themes " +
-    "so profiles look like they did before the cosmetics push.",
+    "Removes avatar decorations, profile effects, nameplates, and profile themes, " +
+    "and the editors for them in your profile, so profiles look like they did before the cosmetics push.",
   defaultEnabled: true,
   subtoggles: {
     decorations: { label: "Avatar decorations", default: true },
