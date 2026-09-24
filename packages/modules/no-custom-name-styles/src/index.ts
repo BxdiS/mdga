@@ -2,9 +2,11 @@ import { defineModule } from "@mdga/plugin-api";
 
 // Discord renders custom name styles in two independent systems:
 //
-// 1. DM sidebar / profile popover — "display name styles" (Nitro cosmetic):
+// 1. DM list, profiles, chat usernames — "display name styles" (Nitro cosmetic):
 //    Container: container_<hash> + dnsFont_<hash> + <fontName>_<hash>
-//    Effects:   prism_<hash>, neon_<hash> on <span data-username-with-effects>
+//    Effects:   solid_, gradient_, prism_, neon_, toon_, pop_, gummy_ (<hash>)
+//               on <span data-username-with-effects>, active only while the
+//               container has showEffect_<hash>
 //    Variables: --custom-display-name-styles-*
 //
 // 2. Member list / chat messages — "username gradient" (Nitro cosmetic):
@@ -19,15 +21,27 @@ import { defineModule } from "@mdga/plugin-api";
 // text in the default font and role colour.
 const CSS = `
 /* ─── Custom font (shared by both systems) ─── */
+/* The font classes also set letter-spacing (0.01em to 0.04em) and
+   dnsFont_ turns font synthesis off; both follow the surrounding text
+   again. */
 [class*="dnsFont_"] {
   font-family: inherit !important;
+  letter-spacing: inherit !important;
+  font-synthesis: inherit !important;
 }
 
-/* ─── System 1: display name styles (DM sidebar, profile popover) ─── */
-/* DM sidebar and profile: strip everything, fall back to default colour.
-   These are personal Nitro cosmetics outside any server context — no role
-   colour applies, so inherit gives the standard text colour. */
+/* ─── System 1: display name styles (DM list, profiles, chat usernames) ─── */
+/* Strip everything and fall back to the surrounding colour: the standard
+   text colour in the DM list and profiles, the role colour inside a chat
+   username_ (the span inherits it from there). Besides the paint, the
+   effect classes set the span's own colour (solid, neon, toon, pop), a
+   266ms colour transition (toon, so a hovered DM row recoloured the name
+   late), negative margins with padding to make room for strokes and
+   glows (neon, toon, pop, gummy), inline-block (pop) and no kerning
+   (gummy); all of it goes back to what the span has without an effect. */
 [data-username-with-effects] {
+  color: inherit !important;
+  transition: none !important;
   background-image: none !important;
   background-clip: unset !important;
   -webkit-background-clip: unset !important;
@@ -37,6 +51,12 @@ const CSS = `
   text-shadow: none !important;
   filter: none !important;
   animation: none !important;
+  display: inline !important;
+  vertical-align: baseline !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-kerning: inherit !important;
+  font-variant-ligatures: inherit !important;
 }
 [class*="showEffect_"] {
   animation: none !important;
@@ -48,8 +68,6 @@ const CSS = `
 [class*="container_"][class*="showEffect_"],
 [class*="container_"][class*="dnsFont_"] {
   --custom-display-name-styles-font-opacity: 1 !important;
-  --custom-display-name-styles-neon-stroke-color: transparent !important;
-  --custom-display-name-styles-toon-stroke-color: transparent !important;
   animation: none !important;
 }
 /* Neon / toon effect classes add stroke and glow via pseudo-elements and
@@ -61,13 +79,28 @@ const CSS = `
   -webkit-text-stroke: 0 !important;
   paint-order: normal !important;
 }
-/* Some effects render an ::before / ::after pseudo for the stroke layer;
-   the container_<hash> sets content via CSS. Hiding them removes leftovers. */
-[class*="container_"][class*="showEffect_"]::before,
-[class*="container_"][class*="showEffect_"]::after,
-[class*="container_"][class*="dnsFont_"]::before,
-[class*="container_"][class*="dnsFont_"]::after {
+/* Toon and pop draw the name a second time in the span's ::before (the
+   gradient fill for toon, the coloured drop copy for pop), and gummy draws
+   its hover underline there. The span's own text is the plain copy. */
+[data-username-with-effects]::before,
+[data-username-with-effects]::after {
   display: none !important;
+}
+/* The hover underline takes the style's main colour; pop and gummy turn
+   it off on the span and draw it in the ::before instead. */
+[data-username-with-effects][class*="underlineOnHover_"]:hover {
+  text-decoration-line: underline !important;
+  text-decoration-color: currentcolor !important;
+}
+/* Gummy puts every letter in its own inline-block and squishes it in
+   turn. As plain inline text the letters kern, wrap and take the hover
+   underline like any other name. */
+[data-username-with-effects] [class*="gummyWord_"],
+[data-username-with-effects] [class*="gummyLetter_"] {
+  display: inline !important;
+  vertical-align: baseline !important;
+  white-space: inherit !important;
+  animation: none !important;
 }
 
 /* ─── System 2: username gradient (member list, chat, system messages) ─── */
@@ -141,7 +174,7 @@ export default defineModule({
   id: "no-custom-name-styles",
   label: "No Custom Name Styles",
   description:
-    "Strips Nitro custom fonts and gradient/neon effects from display names, rendering them as plain text, " +
+    "Strips Nitro custom fonts and effects (gradient, neon, toon, pop, gummy) from display names, rendering them as plain text, " +
     "and hides the display name style button in your profile.",
   defaultEnabled: true,
   css: CSS,
