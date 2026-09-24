@@ -101,12 +101,48 @@ const CSS = `
   text-shadow: none !important;
   filter: none !important;
 }
+
+/* ─── Style editor ───
+   The paintbrush button at the end of the display name field in your
+   profile opens the Nitro display name style picker. The field is an
+   <input> laid over a preview of the name, and the preview sets the width.
+   Hiding only the button broke that: with a trailing button the input is
+   sized 100% - 42px, so it ended up narrower than the preview and the caret
+   drifted off the letters. The preview also renders the name with a
+   trailing space, which left a gap on the right. The preview exists to show
+   display name styles, which this module strips anyway, so drop it along
+   with the button and let the input size itself to its text
+   (field-sizing: content). Matched by the button's label and, for other
+   locales, by the paintbrush icon. */
+[class*="hasTrailing_"] > [class*="trailing_"]:has(button[aria-label="Edit display name style"]),
+[class*="hasTrailing_"] > [class*="trailing_"]:has(path[d^="m9.17 12.67 2.16 2.16"]),
+[class*="hasPreview_"]:has(> [class*="trailing_"] button[aria-label="Edit display name style"]) > [class*="sizer_"],
+[class*="hasPreview_"]:has(> [class*="trailing_"] path[d^="m9.17 12.67 2.16 2.16"]) > [class*="sizer_"] {
+  display: none !important;
+}
+[class*="hasPreview_"]:has(> [class*="trailing_"] button[aria-label="Edit display name style"]) > [class*="field_"],
+[class*="hasPreview_"]:has(> [class*="trailing_"] path[d^="m9.17 12.67 2.16 2.16"]) > [class*="field_"] {
+  position: static !important;
+  width: auto !important;
+  max-width: 100% !important;
+  field-sizing: content !important;
+  opacity: 1 !important;
+}
+/* With a preview, the focused input paints its text transparent so only
+   the preview shows. Paint it normally now that it is the only copy. */
+[class*="hasPreview_"]:has(> [class*="trailing_"] button[aria-label="Edit display name style"]) > [class*="field_"]:focus,
+[class*="hasPreview_"]:has(> [class*="trailing_"] path[d^="m9.17 12.67 2.16 2.16"]) > [class*="field_"]:focus {
+  color: var(--text-default) !important;
+  -webkit-text-fill-color: var(--text-default) !important;
+}
 `;
 
 export default defineModule({
   id: "no-custom-name-styles",
   label: "No Custom Name Styles",
-  description: "Strips Nitro custom fonts and gradient/neon effects from display names, rendering them as plain text.",
+  description:
+    "Strips Nitro custom fonts and gradient/neon effects from display names, rendering them as plain text, " +
+    "and hides the display name style button in your profile.",
   defaultEnabled: true,
   css: CSS,
 });
